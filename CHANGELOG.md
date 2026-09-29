@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-29
+
 ### Added
 
 - Initial scaffold from `devin-repo-template`.
+- Store discovery (`stores.py`): `*.db`/`*.vscdb` under the data dir
+  (sidecars skipped) plus `.devin/` config; env-var dir resolution.
+- `create_snapshot()`: timestamped snapshot dirs, SQLite-consistent copies
+  via `sqlite3.Connection.backup()` with file-copy fallback, `manifest.json`
+  with per-file size/sha256/`schema_version` (via `devin-internals-spec`).
+- `verify_snapshot()`: sha256 + `PRAGMA integrity_check` per entry.
+- `list_snapshots()` / `rotate_snapshots(keep)`: keep-N rotation that never
+  touches `pre-restore-*` dirs or foreign directories.
+- `restore_snapshot()`: dry-run by default, pre-restore backup of
+  overwritten files, refusal without backup, manifest path-traversal guard,
+  schema-version drift warnings.
+- `devin-backup` CLI: `create`, `verify`, `list`, `restore`
+  (`--dry-run`/`--apply`), `rotate --yes`.
+- `docs/SPEC.md` (EN) and real bilingual READMEs.
