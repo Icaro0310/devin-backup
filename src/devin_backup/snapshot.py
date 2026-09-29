@@ -1,0 +1,174 @@
+"""Timestamped snapshots of Devin's local stores.
+
+SQLite stores are copied through ``sqlite3.Connection.backup()``, which
+produces a consistent standalone database even while Devin Desktop is
+running; if that fails (locked file, not a real database) we fall back to a
+plain copy and record ``copied_via`` in the manifest.
+
+Each snapshot is ``<backups>/<UTC timestamp>/`` containing the stores under
+their original relative paths plus ``manifest.json`` with sizes, sha256
+digests and per-database ``schema_version`` (via devin-internals-spec) so a
+later restore can warn "backup is v15, current is v17".
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import shutil
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import quote
+
+from devin_internals.schema import SchemaError, detect_schema_version
+
+from devin_backup import __version__
+from devin_backup.stores import DataDirError, Store, discover_stores
+
+MANIFEST_VERSION = 1
+MANIFEST_NAME = "manifest.json"
+SNAPSHOT_NAME_RE = re.compile(r"^\d{8}T\d{6}Z(-\d+)?$")
+PRE_RESTORE_PREFIX = "pre-restore-"
+
+
+class SnapshotError(RuntimeError):
+    """A snapshot could not be created or read."""
+
+
+def sha256_file(path: str | Path, _chunk_size: int = 1 << 20) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(_chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _connect_readonly(path: Path) -> sqlite3.Connection:
+    uri = f"file:{quote(path.resolve().as_posix(), safe='/:')}?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
+def _copy_sqlite(src: Path, dst: Path) -> None:
+    """Consistent copy via the SQLite online backup API."""
+    source = _connect_readonly(src)
+    try:
+        target = sqlite3.connect(str(dst))
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+
+
+def _detect_schema(dst: Path) -> int | None:
+    try:
+        return int(detect_schema_version(dst)["schema_version"])
+    except (SchemaError, sqlite3.Error, OSError):
+        return None
+
+
+def snapshot_timestamp(now: datetime | None = None) -> str:
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _unique_dir(parent: Path, name: str) -> Path:
+    candidate = parent / name
+    n = 1
+    while candidate.exists():
+        n += 1
+        candidate = parent / f"{name}-{n}"
+    return candidate
+
+
+def _copy_store(store: Store, snap_dir: Path) -> dict:
+    dst = snap_dir / store.rel_path
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    via = "file-copy"
+    if store.kind == "sqlite":
+        try:
+            _copy_sqlite(store.path, dst)
+            via = "sqlite-backup"
+        except (sqlite3.Error, OSError):
+            shutil.copy2(store.path, dst)
+    else:
+        shutil.copy2(store.path, dst)
+    return {
+        "path": store.rel_path,
+        "kind": store.kind,
+        "copied_via": via,
+        "size": dst.stat().st_size,
+        "sha256": sha256_file(dst),
+        "schema_version": _detect_schema(dst) if store.kind == "sqlite" else None,
+    }
+
+
+def create_snapshot(
+    data_dir: str | Path,
+    out_dir: str | Path,
+    *,
+    now: datetime | None = None,
+) -> Path:
+    """Snapshot all stores under ``data_dir`` into ``<out_dir>/<timestamp>/``.
+
+    Returns the snapshot directory. Raises :class:`SnapshotError` if the data
+    dir is missing/empty of known stores; partial snapshots are removed.
+    """
+    data_dir = Path(data_dir).expanduser()
+    out_dir = Path(out_dir).expanduser()
+    try:
+        stores = discover_stores(data_dir, exclude=[out_dir])
+    except DataDirError as exc:
+        raise SnapshotError(str(exc)) from exc
+    if not stores:
+        raise SnapshotError(f"{data_dir}: no Devin stores found to back up")
+
+    snap_dir = _unique_dir(out_dir, snapshot_timestamp(now))
+    try:
+        entries = [_copy_store(store, snap_dir) for store in stores]
+        manifest = {
+            "manifest_version": MANIFEST_VERSION,
+            "tool": "devin-backup",
+            "tool_version": __version__,
+            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source_data_dir": str(data_dir.resolve()),
+            "files": entries,
+            "schema_versions": {
+                e["path"]: e["schema_version"]
+                for e in entries
+                if e["schema_version"] is not None
+            },
+        }
+        (snap_dir / MANIFEST_NAME).write_text(
+            json.dumps(manifest, indent=2, sort_keys=False) + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        shutil.rmtree(snap_dir, ignore_errors=True)
+        raise
+    return snap_dir
+
+
+def load_manifest(snapshot_dir: str | Path) -> dict:
+    """Read and minimally validate a snapshot's ``manifest.json``."""
+    snapshot_dir = Path(snapshot_dir)
+    manifest_path = snapshot_dir / MANIFEST_NAME
+    if not manifest_path.is_file():
+        raise SnapshotError(f"{snapshot_dir}: no {MANIFEST_NAME} — not a snapshot?")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SnapshotError(f"{manifest_path}: unreadable manifest: {exc}") from exc
+    if manifest.get("manifest_version") != MANIFEST_VERSION:
+        raise SnapshotError(
+            f"{manifest_path}: unsupported manifest_version "
+            f"{manifest.get('manifest_version')!r} (expected {MANIFEST_VERSION})"
+        )
+    if not isinstance(manifest.get("files"), list):
+        raise SnapshotError(f"{manifest_path}: manifest has no 'files' list")
+    return manifest
