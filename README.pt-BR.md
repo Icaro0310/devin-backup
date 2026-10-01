@@ -85,6 +85,13 @@ verify.verify_snapshot(snap)              # {"ok": True, ...}
 restore.restore_snapshot(snap, data_dir)  # plano dry-run, não escreve nada
 ```
 
+## Suporte de plataformas
+
+Testado em **Windows e Linux** (o CI corre em `windows-latest` +
+`ubuntu-latest`). A data dir do Devin é auto-detetada: `%APPDATA%\Devin`
+no Windows, `~/.config/devin` nos outros SO; override com `--data-dir`
+ou a env var `DEVIN_DATA_DIR`.
+
 ## Limitações
 
 - **Internals privados e voláteis.** Estes stores são detalhe de
