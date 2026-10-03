@@ -144,6 +144,29 @@ python -m pytest
 Regras base em [CONTRIBUTING.md](CONTRIBUTING.md): fixtures antes de código,
 commits pequenos, docs bilingues. Spec canónica: [docs/SPEC.md](docs/SPEC.md).
 
+## Quando usar
+
+- Você quer snapshots point-in-time restauráveis de tudo o que o Devin guarda localmente — `sessions.db`, `acp-messages/`, `state.vscdb`, config `.devin/`.
+- Você precisa de cópias consistentes mesmo com o Devin a correr — a API de backup online do SQLite evita cópias corrompidas a meio de escrita.
+- Você quer garantias de integridade: manifests com hashes mais `PRAGMA integrity_check` no `verify`, e aviso de versão de schema no restore em vez de um downgrade silencioso.
+- Você quer retenção limitada — `rotate --keep N` poda snapshots antigos sem tocar nas cópias de segurança `pre-restore-*`.
+
+## Quando NÃO usar
+
+- Você precisa de backups agendados — o M1 só corre quando você o corre; embrulhe `devin-backup create` em cron/Task Scheduler por enquanto.
+- Você precisa de backup encriptado ou offsite/cloud — os snapshots são ficheiros simples numa pasta à sua escolha; ponha essa pasta num volume encriptado ou sincronize-a com a sua própria ferramenta.
+- Você só quer o texto das sessões, não o estado restaurável — o export do [`devin-history`](https://github.com/Icaro0310/devin-history) pode ser tudo o que precisa.
+
+## FAQ
+
+**O que é o devin-backup?** Um CLI que tira snapshots consistentes e verificáveis dos stores locais do Devin e os consegue restaurar com segurança. Cada snapshot traz um manifest com checksums e a versão de schema do `sessions.db`, por isso os restores avisam-no antes de fazer downgrade aos seus dados.
+
+**Posso fazer backup com o Devin a correr?** Sim. Os snapshots passam por `sqlite3.Connection.backup()`, que é consistente em bases vivas, com fallback de cópia de ficheiros para ficheiros não-SQLite. Não precisa de fechar o Devin para `create` ou `verify`.
+
+**O restore é destrutivo?** Não por defeito. `restore` é dry-run até passar `--apply`, e mesmo assim cada ficheiro existente é primeiro movido para um backup `pre-restore-<timestamp>`; `--no-backup` recusa sobrescritas por completo.
+
+**Ele encripta ou faz upload dos meus backups?** Não. Os snapshots são cópias simples numa pasta local. Contêm dados reais de sessões (prompts, caminhos, comandos), por isso mantenha o destino num volume privado ou encriptado e aplique o mesmo cuidado que dá aos stores originais.
+
 ## Licença
 
 MIT — vê [LICENSE](LICENSE).
