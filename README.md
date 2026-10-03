@@ -141,6 +141,51 @@ python -m pytest
 Ground rules in [CONTRIBUTING.md](CONTRIBUTING.md): fixtures before code,
 small commits, bilingual docs. Canonical spec: [docs/SPEC.md](docs/SPEC.md).
 
+## When to use this
+
+- You want point-in-time, restorable snapshots of everything Devin keeps
+  locally — `sessions.db`, `acp-messages/`, `state.vscdb`, `.devin/` config.
+- You need copies that are consistent even while Devin is running — the
+  SQLite online backup API avoids corrupt mid-write copies.
+- You want integrity guarantees: hash manifests plus
+  `PRAGMA integrity_check` on `verify`, and a schema-version warning on
+  restore instead of a silent downgrade.
+- You want bounded retention — `rotate --keep N` prunes old snapshots
+  without touching `pre-restore-*` safety copies.
+
+## When NOT to use this
+
+- You need scheduled backups — M1 only runs when you run it; wrap
+  `devin-backup create` in cron/Task Scheduler yourself for now.
+- You need encrypted or offsite/cloud backup — snapshots are plain files in
+  a folder you pick; put that folder on an encrypted volume or sync it with
+  your own tool.
+- You only want the session text, not restorable state —
+  [`devin-history`](https://github.com/Icaro0310/devin-history) export may
+  be all you need.
+
+## FAQ
+
+**What is devin-backup?** A CLI that takes consistent, verifiable snapshots
+of Devin's local stores and can restore them safely. Every snapshot carries
+a manifest with checksums and the `sessions.db` schema version, so restores
+warn you before downgrading your data.
+
+**Can I back up while Devin is running?** Yes. Snapshots go through
+`sqlite3.Connection.backup()`, which is consistent on live databases, with
+a file-copy fallback for non-SQLite files. You do not need to close Devin
+to `create` or `verify`.
+
+**Is restore destructive?** Not by default. `restore` is a dry-run until
+you pass `--apply`, and even then every existing file is moved to a
+`pre-restore-<timestamp>` backup first; `--no-backup` refuses overwrites
+entirely.
+
+**Does it encrypt or upload my backups?** No. Snapshots are plain copies in
+a local folder. They contain real session data (prompts, paths, commands),
+so keep the destination on a private or encrypted volume and apply the same
+care you give the original stores.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
