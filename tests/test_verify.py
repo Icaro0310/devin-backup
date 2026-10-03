@@ -19,6 +19,22 @@ def test_verify_fresh_snapshot_ok(data_dir, backups_dir):
     assert all(r["status"] == "ok" for r in report["results"])
 
 
+def test_verify_uses_snapshot_paths_for_separate_config_root(
+    data_dir, backups_dir, tmp_path
+):
+    config_root = tmp_path / "config" / "Devin"
+    acp_db = config_root / "User" / "acp-messages" / "gui.db"
+    acp_db.parent.mkdir(parents=True)
+    with sqlite3.connect(acp_db) as conn:
+        conn.execute("CREATE TABLE sample (value TEXT)")
+
+    snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_root)
+    report = verify.verify_snapshot(snap)
+
+    assert report["ok"] is True
+    assert any(r["path"] == "config/User/acp-messages/gui.db" for r in report["results"])
+
+
 def test_verify_catches_corrupted_file(data_dir, backups_dir):
     snap = snapshot.create_snapshot(data_dir, backups_dir)
     victim = next((snap / "User" / "acp-messages").glob("*.db"))

@@ -37,10 +37,17 @@ def _integrity_check(path: Path) -> str:
 
 def _verify_file(snapshot_dir: Path, entry: dict) -> dict:
     rel = entry["path"]
-    path = snapshot_dir / rel
+    display_path = (
+        f"config/{rel}" if entry.get("root", "data") == "config" else rel
+    )
+    snapshot_path = Path(entry.get("snapshot_path", rel))
+    path = (snapshot_dir / snapshot_path).resolve()
+    if not path.is_relative_to(snapshot_dir.resolve()):
+        return {"path": display_path, "ok": False, "status": "invalid-path",
+                "checks": {"exists": False}, "detail": "path escapes snapshot"}
     checks: dict = {"exists": path.is_file()}
     if not checks["exists"]:
-        return {"path": rel, "ok": False, "status": "missing", "checks": checks,
+        return {"path": display_path, "ok": False, "status": "missing", "checks": checks,
                 "detail": "file is missing"}
 
     checks["size"] = path.stat().st_size == entry.get("size")
@@ -61,7 +68,7 @@ def _verify_file(snapshot_dir: Path, entry: dict) -> dict:
         status = "ok"
     ok = status == "ok"
     return {
-        "path": rel,
+        "path": display_path,
         "ok": ok,
         "status": status,
         "checks": checks,

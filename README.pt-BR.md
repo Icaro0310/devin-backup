@@ -47,6 +47,8 @@ cérebro mudou por baixo de um backup.*
 
 ## Instalação
 
+Requer Python ≥ 3.10 e `pipx`. **Windows (PowerShell):** instale `pipx` com `py -m pip install --user pipx`, execute `py -m pipx ensurepath` e reabra o terminal. **Linux (Debian/Ubuntu):** execute `sudo apt install pipx python3-venv` e `pipx ensurepath`; reabra o terminal. Noutras distribuições Linux, instale `pipx` pelo gestor de pacotes.
+
 ```bash
 pipx install "devin-backup @ git+https://github.com/Icaro0310/devin-backup.git"
 ```
@@ -56,41 +58,59 @@ pipx install "devin-backup @ git+https://github.com/Icaro0310/devin-backup.git"
 ## Uso
 
 ```bash
-devin-backup create  [--data-dir <path>] [--out <backups-dir>]
+devin-backup create  [--data-dir <raiz-dados>] [--config-dir <raiz-config-ui>] [--out <backups-dir>]
 devin-backup verify  <snapshot-dir>
 devin-backup list    [--out <backups-dir>]
-devin-backup restore <snapshot-dir> --to <data-dir> [--apply] [--no-backup]
+devin-backup restore <snapshot-dir> --to <raiz-dados> [--config-to <raiz-config-ui>] [--apply] [--no-backup]
 devin-backup rotate  [--keep N] --yes
 ```
 
-- `create` escreve `<backups>/<timestamp UTC>/` + `manifest.json`
-  (ficheiros, tamanhos, sha256, versões de schema).
-- `verify` re-verifica todos os hashes e corre `PRAGMA integrity_check` nas
-  bases; exit code 1 em caso de falha.
-- `restore` é **dry-run por defeito** — passa `--apply` para escrever. Antes
-  de sobrescrever o que quer que seja, copia os ficheiros atuais para um
-  backup `pre-restore-<ts>`; `--no-backup` recusa-se a sobrescrever.
+- `create` guarda `sessions.db`, bases ACP, `state.vscdb` e ficheiros `.devin/`
+  quando presentes. O manifesto v2 regista a raiz de origem de cada ficheiro;
+  snapshots v1 antigos continuam legíveis.
+- No Linux, a raiz de dados e a raiz de configuração da UI são separadas. O
+  `create` padrão deteta ambas. Se passares `--data-dir`, passa também
+  `--config-dir` para incluir os stores da UI.
+- `verify` re-verifica hashes e corre `PRAGMA integrity_check` nas bases;
+  exit code 1 em caso de falha.
+- `restore` é **dry-run por defeito**. Restaura dados em `--to` e ficheiros de
+  UI em `--config-to` (por omissão, a raiz de configuração detetada). Passa
+  `--apply` para escrever. Antes de sobrescrever, cria backup
+  `pre-restore-<ts>`; `--no-backup` recusa sobrescritas.
 - `rotate` mantém os N snapshots mais recentes (default `$DEVIN_BACKUP_KEEP`
   ou 10) e não faz nada sem `--yes`. Diretórios `pre-restore-*` nunca são
   rodados.
 
-Defaults: `--data-dir` ← `$DEVIN_DATA_DIR` ou `%APPDATA%\Devin` /
-`~/.config/devin`; `--out` ← `$DEVIN_BACKUP_DIR` ou `<data-dir>/backups`.
+Defaults: a raiz de sessões é `$DEVIN_DATA_DIR` ou `%APPDATA%\\devin` no Windows
+e `$XDG_DATA_HOME/devin` (normalmente `~/.local/share/devin`) no Linux. A raiz
+de configuração UI é `%APPDATA%\\Devin` no Windows e
+`$XDG_CONFIG_HOME/Devin` (normalmente `~/.config/Devin`) no Linux. `--out`
+usa `$DEVIN_BACKUP_DIR` ou `<raiz-dados>/backups`.
 
 ```python
 from devin_backup import snapshot, verify, restore
 
-snap = snapshot.create_snapshot(data_dir, backups_dir)
-verify.verify_snapshot(snap)              # {"ok": True, ...}
-restore.restore_snapshot(snap, data_dir)  # plano dry-run, não escreve nada
+snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_dir)
+verify.verify_snapshot(snap)                            # {"ok": True, ...}
+restore.restore_snapshot(snap, data_dir, config_dir=config_dir)  # dry-run
 ```
+
+## Funciona só com o Devin (modo Devin-only)
+
+O devin-backup copia as stores locais do Devin para uma pasta de destino à
+tua escolha — disco externo, pasta sincronizada, qualquer sítio em disco. Sem
+conta cloud, VM ou serviço de rede.
+
+Os snapshots contêm dados reais de sessão (prompts, caminhos, comandos).
+Trata o destino do backup como sensível: mantém-no num volume privado ou
+cifrado e aplica o mesmo cuidado que dás às stores originais.
 
 ## Suporte de plataformas
 
-Testado em **Windows e Linux** (o CI corre em `windows-latest` +
-`ubuntu-latest`). A data dir do Devin é auto-detetada: `%APPDATA%\Devin`
-no Windows, `~/.config/devin` nos outros SO; override com `--data-dir`
-ou a env var `DEVIN_DATA_DIR`.
+Testado em **Windows e Linux** (CI em `windows-latest` + `ubuntu-latest`). No
+Windows os stores partilham `%APPDATA%\\Devin`. No Linux são detetados em
+`XDG_DATA_HOME/devin` e `XDG_CONFIG_HOME/Devin`. Usa `--data-dir` e
+`--config-dir` para caminhos personalizados.
 
 ## Limitações
 

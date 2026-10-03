@@ -27,7 +27,7 @@ from devin_internals.schema import SchemaError, detect_schema_version
 from devin_backup import __version__
 from devin_backup.stores import DataDirError, Store, discover_stores
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 MANIFEST_NAME = "manifest.json"
 SNAPSHOT_NAME_RE = re.compile(r"^\d{8}T\d{6}Z(-\d+)?$")
 PRE_RESTORE_PREFIX = "pre-restore-"
@@ -86,8 +86,25 @@ def _unique_dir(parent: Path, name: str) -> Path:
     return candidate
 
 
+def _snapshot_path(store: Store) -> str:
+    return (
+        f"config/{store.rel_path}"
+        if store.root == "config"
+        else store.rel_path
+    )
+
+
+def _display_path(entry: dict) -> str:
+    return (
+        f"config/{entry['path']}"
+        if entry.get("root", "data") == "config"
+        else entry["path"]
+    )
+
+
 def _copy_store(store: Store, snap_dir: Path) -> dict:
-    dst = snap_dir / store.rel_path
+    snapshot_path = _snapshot_path(store)
+    dst = snap_dir / snapshot_path
     dst.parent.mkdir(parents=True, exist_ok=True)
     via = "file-copy"
     if store.kind == "sqlite":
@@ -100,6 +117,8 @@ def _copy_store(store: Store, snap_dir: Path) -> dict:
         shutil.copy2(store.path, dst)
     return {
         "path": store.rel_path,
+        "root": store.root,
+        "snapshot_path": snapshot_path,
         "kind": store.kind,
         "copied_via": via,
         "size": dst.stat().st_size,
@@ -112,17 +131,15 @@ def create_snapshot(
     data_dir: str | Path,
     out_dir: str | Path,
     *,
+    config_dir: str | Path | None = None,
     now: datetime | None = None,
 ) -> Path:
-    """Snapshot all stores under ``data_dir`` into ``<out_dir>/<timestamp>/``.
-
-    Returns the snapshot directory. Raises :class:`SnapshotError` if the data
-    dir is missing/empty of known stores; partial snapshots are removed.
-    """
+    """Snapshot Devin stores from its data and optional config roots."""
     data_dir = Path(data_dir).expanduser()
+    config_dir = Path(config_dir).expanduser() if config_dir else None
     out_dir = Path(out_dir).expanduser()
     try:
-        stores = discover_stores(data_dir, exclude=[out_dir])
+        stores = discover_stores(data_dir, config_dir=config_dir, exclude=[out_dir])
     except DataDirError as exc:
         raise SnapshotError(str(exc)) from exc
     if not stores:
@@ -139,11 +156,13 @@ def create_snapshot(
             "source_data_dir": str(data_dir.resolve()),
             "files": entries,
             "schema_versions": {
-                e["path"]: e["schema_version"]
+                e.get("snapshot_path", e["path"]): e["schema_version"]
                 for e in entries
                 if e["schema_version"] is not None
             },
         }
+        if config_dir is not None:
+            manifest["source_config_dir"] = str(config_dir.resolve())
         (snap_dir / MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=False) + "\n",
             encoding="utf-8",
@@ -164,10 +183,10 @@ def load_manifest(snapshot_dir: str | Path) -> dict:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SnapshotError(f"{manifest_path}: unreadable manifest: {exc}") from exc
-    if manifest.get("manifest_version") != MANIFEST_VERSION:
+    if manifest.get("manifest_version") not in {1, MANIFEST_VERSION}:
         raise SnapshotError(
             f"{manifest_path}: unsupported manifest_version "
-            f"{manifest.get('manifest_version')!r} (expected {MANIFEST_VERSION})"
+            f"{manifest.get('manifest_version')!r} (supported: 1..{MANIFEST_VERSION})"
         )
     if not isinstance(manifest.get("files"), list):
         raise SnapshotError(f"{manifest_path}: manifest has no 'files' list")

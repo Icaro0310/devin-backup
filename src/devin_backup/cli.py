@@ -11,6 +11,7 @@ from devin_backup import __version__, restore, rotate, snapshot, verify
 from devin_backup.stores import (
     DataDirError,
     default_backups_dir,
+    default_config_dir,
     default_data_dir,
 )
 
@@ -31,7 +32,10 @@ def _resolve_dirs(args) -> tuple[Path, Path]:
 
 def _cmd_create(args) -> int:
     data_dir, out = _resolve_dirs(args)
-    snap = snapshot.create_snapshot(data_dir, out)
+    config_dir = args.config_dir
+    if config_dir is None and args.data_dir is None:
+        config_dir = default_config_dir()
+    snap = snapshot.create_snapshot(data_dir, out, config_dir=config_dir)
     manifest = snapshot.load_manifest(snap)
     total = sum(f.get("size", 0) for f in manifest["files"])
     print(f"created snapshot: {snap}")
@@ -78,6 +82,7 @@ def _cmd_restore(args) -> int:
     plan = restore.restore_snapshot(
         args.snapshot_dir,
         args.to,
+        config_dir=args.config_to or default_config_dir(),
         dry_run=args.dry_run,
         backup=not args.no_backup,
     )
@@ -134,8 +139,12 @@ def build_parser() -> argparse.ArgumentParser:
             help="backups dir (default: $DEVIN_BACKUP_DIR or <data-dir>/backups)",
         )
 
-    p_create = sub.add_parser("create", help="snapshot all stores")
+    p_create = sub.add_parser("create", help="snapshot all Devin stores")
     add_dirs(p_create)
+    p_create.add_argument(
+        "--config-dir",
+        help="separate Devin UI config root (Linux default is detected)",
+    )
     p_create.set_defaults(func=_cmd_create)
 
     p_verify = sub.add_parser("verify", help="check a snapshot's integrity")
@@ -148,7 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_restore = sub.add_parser("restore", help="restore a snapshot")
     p_restore.add_argument("snapshot_dir")
-    p_restore.add_argument("--to", required=True, help="target data dir")
+    p_restore.add_argument("--to", required=True, help="target Devin data root")
+    p_restore.add_argument(
+        "--config-to",
+        help="target Devin UI config root (default: platform location)",
+    )
     group = p_restore.add_mutually_exclusive_group()
     group.add_argument(
         "--dry-run", dest="dry_run", action="store_true", default=True,

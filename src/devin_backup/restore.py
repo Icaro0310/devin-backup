@@ -34,36 +34,54 @@ from devin_backup.snapshot import (
     load_manifest,
     snapshot_timestamp,
 )
-from devin_backup.stores import Store
+from devin_backup.stores import Store, default_config_dir
 
 
 class RestoreError(RuntimeError):
     """The restore was refused or could not be completed safely."""
 
 
-def _check_paths(manifest: dict, target_dir: Path) -> list[str]:
-    """Manifest paths must stay inside the target dir (no ``../`` escapes)."""
-    root = target_dir.resolve()
-    rels = []
+def _display_path(entry: dict) -> str:
+    rel = entry["path"]
+    return f"config/{rel}" if entry.get("root", "data") == "config" else rel
+
+
+def _check_paths(
+    manifest: dict, snapshot_dir: Path, target_dir: Path, config_dir: Path
+) -> list[tuple[dict, Path]]:
+    """Keep snapshot and destination paths inside their selected roots."""
+    snapshot_root = snapshot_dir.resolve()
+    roots = {"data": target_dir, "config": config_dir}
+    entries: list[tuple[dict, Path]] = []
     for entry in manifest["files"]:
         rel = entry.get("path")
-        if not isinstance(rel, str) or not rel:
-            raise RestoreError(f"manifest: invalid path entry {rel!r}")
-        dest = (target_dir / rel).resolve()
-        if dest == root or not dest.is_relative_to(root):
+        root_name = entry.get("root", "data")
+        if not isinstance(rel, str) or not rel or root_name not in roots:
+            raise RestoreError(f"manifest: invalid file entry {entry!r}")
+        target_root = roots[root_name]
+        target_base = target_root.resolve()
+        dest = (target_root / rel).resolve()
+        snapshot_path = Path(entry.get("snapshot_path", rel))
+        source = (snapshot_dir / snapshot_path).resolve()
+        if dest == target_base or not dest.is_relative_to(target_base):
             raise RestoreError(
                 f"manifest: path {rel!r} escapes the restore target — refusing"
             )
-        rels.append(rel)
-    return rels
+        if not source.is_relative_to(snapshot_root):
+            raise RestoreError(
+                f"manifest: snapshot path {str(snapshot_path)!r} escapes the snapshot — refusing"
+            )
+        entries.append((entry, dest))
+    return entries
 
 
-def _schema_warnings(manifest: dict, target_dir: Path) -> list[str]:
+def _schema_warnings(entries: list[tuple[dict, Path]]) -> list[str]:
     warnings = []
-    for rel, backed_up in manifest.get("schema_versions", {}).items():
-        live = target_dir / rel
-        if not live.is_file():
+    for entry, live in entries:
+        backed_up = entry.get("schema_version")
+        if backed_up is None or not live.is_file():
             continue
+        rel = _display_path(entry)
         try:
             current = detect_schema_version(live)["schema_version"]
         except (SchemaError, sqlite3.Error, OSError):
@@ -80,28 +98,35 @@ def _schema_warnings(manifest: dict, target_dir: Path) -> list[str]:
 
 
 def _pre_restore_backup(
-    snapshot_dir: Path, target_dir: Path, existing: list[str], kinds: dict[str, str]
+    snapshot_dir: Path,
+    target_dir: Path,
+    config_dir: Path,
+    existing: list[tuple[dict, Path]],
 ) -> Path:
-    """Copy the files about to be overwritten into ``pre-restore-<ts>/``."""
+    """Copy files about to be overwritten into ``pre-restore-<ts>/``."""
     backups_dir = snapshot_dir.parent
     pre_dir = _unique_dir(
         backups_dir, PRE_RESTORE_PREFIX + snapshot_timestamp()
     )
     try:
         entries = []
-        for rel in existing:
-            store = Store(
-                path=target_dir / rel,
-                rel_path=rel,
-                kind=kinds.get(rel, "file"),
-            )
-            entries.append(_copy_store(store, pre_dir))
+        for entry, path in existing:
+            entries.append(_copy_store(
+                Store(
+                    path=path,
+                    rel_path=entry["path"],
+                    kind=entry.get("kind", "file"),
+                    root=entry.get("root", "data"),
+                ),
+                pre_dir,
+            ))
         manifest = {
             "manifest_version": MANIFEST_VERSION,
             "kind": "pre-restore",
             "tool": "devin-backup",
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "source_data_dir": str(target_dir.resolve()),
+            "source_config_dir": str(config_dir.resolve()),
             "restores_snapshot": snapshot_dir.name,
             "files": entries,
         }
@@ -121,13 +146,16 @@ def restore_snapshot(
     snapshot_dir: str | Path,
     target_dir: str | Path,
     *,
+    config_dir: str | Path | None = None,
     dry_run: bool = True,
     backup: bool = True,
     now: datetime | None = None,
 ) -> dict:
-    """Restore ``snapshot_dir`` into ``target_dir``.
+    """Restore a snapshot to its Devin data and config roots.
 
     Args:
+        config_dir: destination for UI/config stores; defaults to the current
+            platform's Devin config root.
         dry_run: default ``True`` — plan only, write nothing.
         backup: when overwriting, first copy current files to a
             ``pre-restore-<ts>`` dir next to the snapshots. ``False`` makes
@@ -136,48 +164,50 @@ def restore_snapshot(
     """
     snapshot_dir = Path(snapshot_dir).expanduser()
     target_dir = Path(target_dir).expanduser()
-    try:
-        manifest = load_manifest(snapshot_dir)
-    except SnapshotError:
-        raise
-    rels = _check_paths(manifest, target_dir)
-    kinds = {e["path"]: e.get("kind", "file") for e in manifest["files"]}
-    existing = [rel for rel in rels if (target_dir / rel).exists()]
-    warnings = _schema_warnings(manifest, target_dir)
+    config_dir = Path(config_dir).expanduser() if config_dir else default_config_dir()
+    manifest = load_manifest(snapshot_dir)
+    mapped = _check_paths(manifest, snapshot_dir, target_dir, config_dir)
+    existing = [(entry, dest) for entry, dest in mapped if dest.exists()]
+    warnings = _schema_warnings(mapped)
+    writes = [_display_path(entry) for entry, _ in mapped]
+    overwrites = [_display_path(entry) for entry, _ in existing]
 
     if dry_run:
         return {
             "dry_run": True,
             "snapshot": str(snapshot_dir),
             "target": str(target_dir),
-            "would_write": rels,
-            "would_overwrite": existing,
-            "would_backup": existing if (existing and backup) else [],
+            "config_target": str(config_dir),
+            "would_write": writes,
+            "would_overwrite": overwrites,
+            "would_backup": overwrites if (overwrites and backup) else [],
             "warnings": warnings,
         }
 
     if existing:
         if not backup:
             raise RestoreError(
-                f"{target_dir}: {len(existing)} file(s) would be overwritten "
-                "and backup=False — refusing"
+                f"{len(existing)} file(s) would be overwritten and backup=False — refusing"
             )
-        pre_dir = _pre_restore_backup(snapshot_dir, target_dir, existing, kinds)
+        pre_dir = _pre_restore_backup(
+            snapshot_dir, target_dir, config_dir, existing
+        )
         pre_restore: str | None = str(pre_dir)
     else:
         pre_restore = None
 
-    for rel in rels:
-        dst = target_dir / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(snapshot_dir / rel, dst)
+    for entry, dest in mapped:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path = entry.get("snapshot_path", entry["path"])
+        shutil.copy2(snapshot_dir / snapshot_path, dest)
 
     return {
         "dry_run": False,
         "snapshot": str(snapshot_dir),
         "target": str(target_dir),
-        "written": rels,
-        "overwritten": existing,
+        "config_target": str(config_dir),
+        "written": writes,
+        "overwritten": overwrites,
         "pre_restore_backup": pre_restore,
         "warnings": warnings,
     }

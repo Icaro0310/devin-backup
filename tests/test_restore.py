@@ -29,6 +29,28 @@ def test_restore_dry_run_writes_nothing(data_dir, backups_dir, tmp_path):
     assert not target.exists()
 
 
+def test_restore_split_snapshot_routes_files_to_both_roots(
+    data_dir, backups_dir, tmp_path
+):
+    config_source = tmp_path / "config-source" / "Devin"
+    acp_db = config_source / "User" / "acp-messages" / "gui.db"
+    acp_db.parent.mkdir(parents=True)
+    with sqlite3.connect(acp_db) as conn:
+        conn.execute("CREATE TABLE sample (value TEXT)")
+    snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_source)
+    data_target = tmp_path / "restore-data"
+    config_target = tmp_path / "restore-config"
+
+    plan = restore.restore_snapshot(
+        snap, data_target, config_dir=config_target, dry_run=False
+    )
+
+    assert plan["dry_run"] is False
+    assert (data_target / "cli" / "sessions.db").is_file()
+    assert (config_target / "User" / "acp-messages" / "gui.db").is_file()
+    assert "config/User/acp-messages/gui.db" in plan["written"]
+
+
 def test_restore_apply_to_empty_target(data_dir, backups_dir, tmp_path):
     snap = snapshot.create_snapshot(data_dir, backups_dir)
     target = tmp_path / "restore-target"

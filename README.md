@@ -46,6 +46,8 @@ format changed underneath a backup.*
 
 ## Install
 
+Python ≥ 3.10 and `pipx` are required. **Windows (PowerShell):** install `pipx` with `py -m pip install --user pipx`, run `py -m pipx ensurepath`, then reopen the terminal. **Linux (Debian/Ubuntu):** run `sudo apt install pipx python3-venv` and `pipx ensurepath`; reopen the terminal. Other Linux distributions should install `pipx` using their package manager.
+
 ```bash
 pipx install "devin-backup @ git+https://github.com/Icaro0310/devin-backup.git"
 ```
@@ -55,41 +57,58 @@ pipx install "devin-backup @ git+https://github.com/Icaro0310/devin-backup.git"
 ## Usage
 
 ```bash
-devin-backup create  [--data-dir <path>] [--out <backups-dir>]
+devin-backup create  [--data-dir <session-data-root>] [--config-dir <ui-config-root>] [--out <backups-dir>]
 devin-backup verify  <snapshot-dir>
 devin-backup list    [--out <backups-dir>]
-devin-backup restore <snapshot-dir> --to <data-dir> [--apply] [--no-backup]
+devin-backup restore <snapshot-dir> --to <session-data-root> [--config-to <ui-config-root>] [--apply] [--no-backup]
 devin-backup rotate  [--keep N] --yes
 ```
 
-- `create` writes `<backups>/<UTC timestamp>/` + `manifest.json`
-  (files, sizes, sha256, schema versions).
+- `create` snapshots `sessions.db`, ACP message databases, `state.vscdb` and
+  `.devin/` files when present. A v2 manifest records which source root each
+  file came from; old v1 snapshots remain readable.
+- On Linux, the CLI data root and UI config root are separate. The default
+  `create` detects both. If you pass `--data-dir`, also pass `--config-dir`
+  to include the UI stores.
 - `verify` re-checks every hash and runs `PRAGMA integrity_check` on DBs;
   exit code 1 on failure.
-- `restore` is a **dry-run by default** — pass `--apply` to write. Before
-  overwriting anything it copies current files to a `pre-restore-<ts>`
-  backup; `--no-backup` refuses to overwrite instead.
+- `restore` is a **dry-run by default**. It restores data-root files to
+  `--to` and config-root files to `--config-to` (default: detected UI config
+  root). Pass `--apply` to write. Existing files are saved to a
+  `pre-restore-<ts>` backup first; `--no-backup` refuses overwrites.
 - `rotate` keeps the newest N snapshots (default `$DEVIN_BACKUP_KEEP` or 10)
   and is a no-op until `--yes`. `pre-restore-*` dirs are never rotated.
 
-Defaults: `--data-dir` ← `$DEVIN_DATA_DIR` or `%APPDATA%\Devin` /
-`~/.config/devin`; `--out` ← `$DEVIN_BACKUP_DIR` or `<data-dir>/backups`.
+Defaults: the session data root is `$DEVIN_DATA_DIR` or
+`%APPDATA%\\devin` on Windows and `$XDG_DATA_HOME/devin` (normally
+`~/.local/share/devin`) on Linux. The UI config root is `%APPDATA%\\Devin`
+on Windows and `$XDG_CONFIG_HOME/Devin` (normally `~/.config/Devin`) on Linux.
+`--out` defaults to `$DEVIN_BACKUP_DIR` or `<data-root>/backups`.
 
 ```python
 from devin_backup import snapshot, verify, restore
 
-snap = snapshot.create_snapshot(data_dir, backups_dir)
-verify.verify_snapshot(snap)              # {"ok": True, ...}
-restore.restore_snapshot(snap, data_dir)  # dry-run plan, writes nothing
+snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_dir)
+verify.verify_snapshot(snap)                       # {"ok": True, ...}
+restore.restore_snapshot(snap, data_dir, config_dir=config_dir)  # dry-run
 ```
+
+## Works with Devin alone (Devin-only mode)
+
+devin-backup copies Devin's local stores to a destination folder you pick —
+an external drive, a synced folder, anywhere on disk. No cloud account, VM or
+network service is required.
+
+Snapshots contain real session data (prompts, paths, commands). Treat the
+backup destination as sensitive: keep it on a private/encrypted volume and
+apply the same care you give the original stores.
 
 ## Platform support
 
 Tested on **Windows and Linux** (`windows-latest` + `ubuntu-latest` in CI).
-The Devin data dir is auto-detected: `%APPDATA%\Devin` on Windows,
-`~/.config/devin` on other OSes; override with `--data-dir` or the
-`DEVIN_DATA_DIR` env var.
-
+Windows stores share the `%APPDATA%\\Devin` root. Linux stores are discovered
+separately under `XDG_DATA_HOME/devin` and `XDG_CONFIG_HOME/Devin`. Use
+`--data-dir` and `--config-dir` for non-default locations.
 ## Limitations
 
 - **Private, volatile internals.** These stores are Devin implementation

@@ -33,7 +33,7 @@ def test_snapshot_copies_all_stores_with_manifest(data_dir, backups_dir):
     snap = snapshot.create_snapshot(data_dir, backups_dir)
     manifest = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
 
-    assert manifest["manifest_version"] == 1
+    assert manifest["manifest_version"] == 2
     files = {f["path"]: f for f in manifest["files"]}
     assert len(files) == EXPECTED_STORES
 
@@ -47,6 +47,31 @@ def test_snapshot_copies_all_stores_with_manifest(data_dir, backups_dir):
     assert (snap / ".devin" / "config.json").read_bytes() == (
         data_dir / ".devin" / "config.json"
     ).read_bytes()
+
+
+def test_snapshot_includes_stores_from_a_separate_config_root(
+    data_dir, backups_dir, tmp_path
+):
+    from devin_backup.verify import verify_snapshot
+
+    config_root = tmp_path / "config" / "Devin"
+    acp_db = config_root / "User" / "acp-messages" / "gui.db"
+    state_db = config_root / "User" / "globalStorage" / "state.vscdb"
+    for db in (acp_db, state_db):
+        db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(db) as conn:
+            conn.execute("CREATE TABLE sample (value TEXT)")
+
+    snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_root)
+    manifest = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    config_files = {f["path"]: f for f in manifest["files"] if f["root"] == "config"}
+
+    assert set(config_files) == {
+        "User/acp-messages/gui.db",
+        "User/globalStorage/state.vscdb",
+    }
+    assert (snap / "config" / "User" / "acp-messages" / "gui.db").is_file()
+    assert verify_snapshot(snap)["ok"]
 
 
 def test_snapshot_uses_sqlite_backup_api(data_dir, backups_dir):
