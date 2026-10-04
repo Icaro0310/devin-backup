@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `diff <snapshot>` subcommand + `diff_snapshot()`: read-only comparison of
+  a snapshot against the live stores — per-file same/different via sha256
+  plus a logical SQLite content digest (backup copies are not
+  byte-identical), size deltas, per-table row counts on drift, and
+  snapshot-only/live-only files. Always exits 0; `--json` supported.
+
 ## [0.1.0] - 2026-09-29
 
 ### Added

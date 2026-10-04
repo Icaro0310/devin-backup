@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
-from devin_backup import __version__, restore, rotate, snapshot, verify
+from devin_backup import __version__, diff, restore, rotate, snapshot, verify
 from devin_backup.stores import (
     DataDirError,
     default_backups_dir,
@@ -103,6 +104,60 @@ def _cmd_restore(args) -> int:
     return 0
 
 
+def _fmt_size(size) -> str:
+    return "-" if size is None else f"{size} B"
+
+
+def _cmd_diff(args) -> int:
+    data_dir = (
+        Path(args.data_dir).expanduser()
+        if args.data_dir
+        else default_data_dir()
+    )
+    config_dir = (
+        Path(args.config_dir).expanduser() if args.config_dir else None
+    )
+    report = diff.diff_snapshot(
+        args.snapshot_dir, data_dir, config_dir=config_dir
+    )
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    print(f"snapshot: {report['snapshot']}")
+    print(f"live:     {report['data_dir']}")
+    for w in report["warnings"]:
+        print(f"warning: {w}", file=sys.stderr)
+    rows = report["files"]
+    for r in sorted(rows, key=lambda x: x["path"]):
+        status = r["status"]
+        if r["status"] == diff.SAME and r["bytes_equal"] is False:
+            status = "same*"
+        delta = r["size_delta"]
+        delta_s = "-" if delta is None else f"{delta:+d} B"
+        print(
+            f"  {status:<14} {r['path']:<44} "
+            f"{_fmt_size(r['snapshot_size']):>10} → "
+            f"{_fmt_size(r['live_size']):>10}  {delta_s}"
+        )
+        if r["tables"]:
+            changed = ", ".join(
+                f"{t} {n0}→{n1}" for t, (n0, n1) in r["tables"].items()
+            )
+            print(f"    {'':<14} rows: {changed}")
+    if any(r["status"] == diff.SAME and r["bytes_equal"] is False
+           for r in rows):
+        print("  * identical content; file bytes differ "
+              "(sqlite-backup copies are not byte-identical)")
+    s = report["summary"]
+    print(
+        f"{s.get(diff.SAME, 0)} same · {s.get(diff.DIFFERENT, 0)} different · "
+        f"{s.get(diff.SNAPSHOT_ONLY, 0)} snapshot-only · "
+        f"{s.get(diff.LIVE_ONLY, 0)} live-only · "
+        f"{s.get(diff.SNAPSHOT_MISSING, 0)} missing from snapshot"
+    )
+    return 0
+
+
 def _cmd_rotate(args) -> int:
     _, out = _resolve_dirs(args)
     if not args.yes:
@@ -176,6 +231,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip the pre-restore backup (refuses to overwrite anything)",
     )
     p_restore.set_defaults(func=_cmd_restore)
+
+    p_diff = sub.add_parser(
+        "diff",
+        help="compare a snapshot against the live stores (read-only)",
+    )
+    p_diff.add_argument("snapshot_dir")
+    p_diff.add_argument(
+        "--data-dir",
+        help="live Devin data dir (default: $DEVIN_DATA_DIR or platform default)",
+    )
+    p_diff.add_argument(
+        "--config-dir",
+        help="live Devin UI config root (default: platform location)",
+    )
+    p_diff.add_argument(
+        "--json", action="store_true", help="machine-readable JSON output"
+    )
+    p_diff.set_defaults(func=_cmd_diff)
 
     p_rotate = sub.add_parser("rotate", help="keep last N snapshots, delete older")
     add_dirs(p_rotate)

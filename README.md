@@ -65,6 +65,7 @@ pipx install "devin-backup @ git+https://github.com/Icaro0310/devin-backup.git"
 ```bash
 devin-backup create  [--data-dir <session-data-root>] [--config-dir <ui-config-root>] [--out <backups-dir>]
 devin-backup verify  <snapshot-dir>
+devin-backup diff    <snapshot-dir> [--data-dir <session-data-root>] [--config-dir <ui-config-root>] [--json]
 devin-backup list    [--out <backups-dir>]
 devin-backup restore <snapshot-dir> --to <session-data-root> [--config-to <ui-config-root>] [--apply] [--no-backup]
 devin-backup rotate  [--keep N] --yes
@@ -78,6 +79,11 @@ devin-backup rotate  [--keep N] --yes
   to include the UI stores.
 - `verify` re-checks every hash and runs `PRAGMA integrity_check` on DBs;
   exit code 1 on failure.
+- `diff` compares a snapshot against the live stores — same/different per
+  file, size deltas, files present on only one side — and never writes
+  anything (exit 0 even on differences). For SQLite stores it compares a
+  logical content digest plus per-table row counts, because
+  `sqlite3.Connection.backup()` copies are not byte-identical.
 - `restore` is a **dry-run by default**. It restores data-root files to
   `--to` and config-root files to `--config-to` (default: detected UI config
   root). Pass `--apply` to write. Existing files are saved to a
@@ -92,10 +98,11 @@ on Windows and `$XDG_CONFIG_HOME/Devin` (normally `~/.config/Devin`) on Linux.
 `--out` defaults to `$DEVIN_BACKUP_DIR` or `<data-root>/backups`.
 
 ```python
-from devin_backup import snapshot, verify, restore
+from devin_backup import diff, snapshot, verify, restore
 
 snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_dir)
 verify.verify_snapshot(snap)                       # {"ok": True, ...}
+diff.diff_snapshot(snap, data_dir, config_dir=config_dir)  # read-only report
 restore.restore_snapshot(snap, data_dir, config_dir=config_dir)  # dry-run
 ```
 

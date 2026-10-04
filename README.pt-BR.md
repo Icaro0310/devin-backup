@@ -66,6 +66,7 @@ pipx install "devin-backup @ git+https://github.com/Icaro0310/devin-backup.git"
 ```bash
 devin-backup create  [--data-dir <raiz-dados>] [--config-dir <raiz-config-ui>] [--out <backups-dir>]
 devin-backup verify  <snapshot-dir>
+devin-backup diff    <snapshot-dir> [--data-dir <raiz-dados>] [--config-dir <raiz-config-ui>] [--json]
 devin-backup list    [--out <backups-dir>]
 devin-backup restore <snapshot-dir> --to <raiz-dados> [--config-to <raiz-config-ui>] [--apply] [--no-backup]
 devin-backup rotate  [--keep N] --yes
@@ -79,6 +80,11 @@ devin-backup rotate  [--keep N] --yes
   `--config-dir` para incluir os stores da UI.
 - `verify` re-verifica hashes e corre `PRAGMA integrity_check` nas bases;
   exit code 1 em caso de falha.
+- `diff` compara um snapshot com os stores atuais — igual/diferente por
+  ficheiro, deltas de tamanho, ficheiros presentes só de um lado — e nunca
+  escreve nada (exit 0 mesmo com diferenças). Para stores SQLite compara um
+  digest lógico do conteúdo mais contagens de linhas por tabela, porque
+  cópias de `sqlite3.Connection.backup()` não são byte-idênticas.
 - `restore` é **dry-run por defeito**. Restaura dados em `--to` e ficheiros de
   UI em `--config-to` (por omissão, a raiz de configuração detetada). Passa
   `--apply` para escrever. Antes de sobrescrever, cria backup
@@ -94,10 +100,11 @@ de configuração UI é `%APPDATA%\\Devin` no Windows e
 usa `$DEVIN_BACKUP_DIR` ou `<raiz-dados>/backups`.
 
 ```python
-from devin_backup import snapshot, verify, restore
+from devin_backup import diff, snapshot, verify, restore
 
 snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_dir)
 verify.verify_snapshot(snap)                            # {"ok": True, ...}
+diff.diff_snapshot(snap, data_dir, config_dir=config_dir)  # relatório read-only
 restore.restore_snapshot(snap, data_dir, config_dir=config_dir)  # dry-run
 ```
 
