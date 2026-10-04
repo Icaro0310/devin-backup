@@ -263,7 +263,57 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_rotate.set_defaults(func=_cmd_rotate)
 
+    p_copy = sub.add_parser(
+        "copy-to", help="copy a snapshot to a secondary dir and "
+        "re-verify hashes at the destination (BK-2)")
+    p_copy.add_argument("snapshot_dir")
+    p_copy.add_argument("dest", help="secondary destination parent dir "
+                        "(mounted drive, NAS mount, synced folder)")
+    p_copy.add_argument("--json", action="store_true")
+    p_copy.set_defaults(func=_cmd_copy_to)
+
+    p_inst = sub.add_parser(
+        "install", help="schedule a daily 'create' job "
+        "(cron / Task Scheduler / elapsed hook — F6, opt-in)")
+    p_inst.add_argument("--out", help="snapshot output dir for the job")
+    p_inst.add_argument("--config-dir", help="Devin config dir override "
+                        "(where .devin-ecosystem/scheduled.json lives)")
+    p_inst.add_argument("--backend", default="auto",
+                        choices=["auto", "tasksch", "cron", "elapsed"])
+    p_inst.add_argument("--json", action="store_true")
+    p_inst.set_defaults(func=_cmd_install)
+
     return parser
+
+
+def _cmd_copy_to(args) -> int:
+    from devin_backup.secondary import copy_to
+    result = copy_to(args.snapshot_dir, args.dest)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        v = result["verify"]
+        print(f"copied → {result['dest']}")
+        print(f"  re-verified: {v['checked']} file(s), "
+              f"{v['failed']} failed")
+    return 0
+
+
+def _cmd_install(args) -> int:
+    from devin_backup.install import install_daily
+    result = install_daily(out_dir=args.out, config_dir=args.config_dir,
+                           backend=args.backend)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"installed '{result['job']}' [{result['backend']}]")
+        print(f"  command: {result['command']}")
+        print(f"  registry: {result['registry']}")
+        if result["backend"] == "elapsed":
+            print("  elapsed backend: add "
+                  "'python tools/schedule.py check --run' to a "
+                  "UserPromptSubmit hook (see devin-powerups README)")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

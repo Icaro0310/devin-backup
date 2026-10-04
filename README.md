@@ -122,6 +122,24 @@ Tested on **Windows and Linux** (`windows-latest` + `ubuntu-latest` in CI).
 Windows stores share the `%APPDATA%\\Devin` root. Linux stores are discovered
 separately under `XDG_DATA_HOME/devin` and `XDG_CONFIG_HOME/Devin`. Use
 `--data-dir` and `--config-dir` for non-default locations.
+
+### `devin-backup copy-to` — verified secondary destination (BK-2)
+
+Copies a whole snapshot into a secondary directory (mounted drive, NAS
+mount, synced folder) and **re-verifies every sha256 at the destination** —
+a corrupt copy is removed and reported instead of silently archived.
+Encryption/remote sync is intentionally out of scope (personal-track P-8).
+
+### `devin-backup install` — daily scheduled snapshots (BK-1)
+
+`devin-backup install [--out DIR] [--backend auto|tasksch|cron|elapsed]`
+registers a daily `devin-backup create` job using the F6 scheduling
+foundation (shared `.devin-ecosystem/scheduled.json` registry): Task
+Scheduler on Windows, a tagged crontab line elsewhere, and — where
+schedulers are banned — the `elapsed` backend ticked by a `UserPromptSubmit`
+hook (see devin-powerups `tools/schedule.py`). Opt-in; nothing is scheduled
+unless you run it.
+
 ## Limitations
 
 - **Private, volatile internals.** These stores are Devin implementation
