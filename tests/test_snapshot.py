@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -138,6 +139,41 @@ def test_snapshot_timestamped_and_unique(data_dir, backups_dir):
         data_dir, backups_dir, now=now + timedelta(seconds=1)
     )
     assert snap3.name == "20260929T203001Z"
+
+
+def test_snapshot_exclude_pattern_skips_stores(data_dir, backups_dir):
+    snap = snapshot.create_snapshot(
+        data_dir, backups_dir, exclude=("acp-messages",)
+    )
+    manifest = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    paths = [f["path"] for f in manifest["files"]]
+    assert not any("acp-messages" in p for p in paths)
+    assert "cli/sessions.db" in paths
+    excluded = [e["path"] for e in manifest["excluded"]]
+    assert len(excluded) == 2 and all("acp-messages" in p for p in excluded)
+
+
+def test_snapshot_exclude_secrets_skips_vscdb(data_dir, backups_dir):
+    snap = snapshot.create_snapshot(
+        data_dir, backups_dir, exclude_secrets=True
+    )
+    manifest = json.loads((snap / "manifest.json").read_text(encoding="utf-8"))
+    paths = [f["path"] for f in manifest["files"]]
+    assert "User/globalStorage/state.vscdb" not in paths
+    assert not (snap / "User" / "globalStorage" / "state.vscdb").exists()
+    excluded = [e["path"] for e in manifest["excluded"]]
+    assert "User/globalStorage/state.vscdb" in excluded
+
+
+@pytest.mark.skipif(os.name == "nt", reason="posix mode bits")
+def test_snapshot_dir_is_owner_only(data_dir, backups_dir):
+    import stat
+    snap = snapshot.create_snapshot(data_dir, backups_dir)
+    assert stat.S_IMODE(snap.stat().st_mode) == 0o700
+    assert stat.S_IMODE(
+        (snap / "manifest.json").stat().st_mode) == 0o600
+    copied = snap / "cli" / "sessions.db"
+    assert stat.S_IMODE(copied.stat().st_mode) == 0o600
 
 
 def test_snapshot_empty_data_dir_raises(tmp_path, backups_dir):

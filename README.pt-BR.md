@@ -95,6 +95,14 @@ devin-backup rotate  [--keep N] --yes
 - `rotate` mantém os N snapshots mais recentes (default `$DEVIN_BACKUP_KEEP`
   ou 10) e não faz nada sem `--yes`. Diretórios `pre-restore-*` nunca são
   rodados.
+- **Um snapshot é uma cópia de todos os segredos que as stores guardam.**
+  Diretórios de snapshot nascem owner-only (`0700` dirs, `0600` ficheiros —
+  garante que o dir de backups escolhido também é). `create --exclude
+  <PADRÃO>` salta stores por substring/glob no path (repetível);
+  `create --exclude-secrets` salta as stores onde uma auditoria real
+  encontrou tokens OAuth e PII: `globalStorage/state.vscdb`,
+  `credentials.toml`, `*.pem`, `*.key`. Exclusões ficam listadas no
+  manifest em `"excluded"`.
 
 Defaults: a raiz de sessões é `$DEVIN_DATA_DIR` ou `%APPDATA%\\devin` no Windows
 e `$XDG_DATA_HOME/devin` (normalmente `~/.local/share/devin`) no Linux. A raiz

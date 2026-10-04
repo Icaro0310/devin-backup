@@ -93,6 +93,13 @@ devin-backup rotate  [--keep N] --yes
   `pre-restore-<ts>` backup first; `--no-backup` refuses overwrites.
 - `rotate` keeps the newest N snapshots (default `$DEVIN_BACKUP_KEEP` or 10)
   and is a no-op until `--yes`. `pre-restore-*` dirs are never rotated.
+- **A snapshot is a copy of every secret the stores hold.** Snapshot dirs
+  are created owner-only (`0700` dirs, `0600` files — make sure the
+  backups dir you pick is too). `create --exclude <PATTERN>` skips stores
+  by path substring/glob (repeatable); `create --exclude-secrets` skips
+  the stores a live audit found carrying OAuth tokens and PII:
+  `globalStorage/state.vscdb`, `credentials.toml`, `*.pem`, `*.key`.
+  Exclusions are listed in the manifest under `"excluded"`.
 
 Defaults: the session data root is `$DEVIN_DATA_DIR` or
 `%APPDATA%\\devin` on Windows and `$XDG_DATA_HOME/devin` (normally

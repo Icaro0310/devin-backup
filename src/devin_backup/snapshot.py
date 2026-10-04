@@ -13,8 +13,10 @@ later restore can warn "backup is v15, current is v17".
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -32,6 +34,24 @@ MANIFEST_VERSION = 2
 MANIFEST_NAME = "manifest.json"
 SNAPSHOT_NAME_RE = re.compile(r"^\d{8}T\d{6}Z(-\d+)?$")
 PRE_RESTORE_PREFIX = "pre-restore-"
+
+# Stores known to carry credentials / PII — skipped by ``--exclude-secrets``.
+# A vscdb-scan audit of a live state.vscdb confirmed OAuth tokens (GitHub,
+# Codeium/Windsurf) and user-identifying key names live there.
+SENSITIVE_PATTERNS = (
+    "globalStorage/state.vscdb",
+    "credentials.toml",
+    "*.pem",
+    "*.key",
+)
+
+
+def _excluded(store: Store, patterns: tuple[str, ...]) -> bool:
+    rel = store.rel_path.replace(os.sep, "/")
+    return any(
+        fnmatch.fnmatch(rel, pat) or pat.lower() in rel.lower()
+        for pat in patterns
+    )
 
 
 class SnapshotError(RuntimeError):
@@ -116,6 +136,10 @@ def _copy_store(store: Store, snap_dir: Path) -> dict:
             shutil.copy2(store.path, dst)
     else:
         shutil.copy2(store.path, dst)
+    try:
+        os.chmod(dst, 0o600)
+    except OSError:
+        pass  # Windows ACLs — mode bits are advisory there
     return {
         "path": store.rel_path,
         "root": store.root,
@@ -134,8 +158,17 @@ def create_snapshot(
     *,
     config_dir: str | Path | None = None,
     now: datetime | None = None,
+    exclude: tuple[str, ...] = (),
+    exclude_secrets: bool = False,
 ) -> Path:
-    """Snapshot Devin stores from its data and optional config roots."""
+    """Snapshot Devin stores from its data and optional config roots.
+
+    ``exclude`` filters stores by substring/fnmatch match on the relative
+    path; ``exclude_secrets`` additionally skips stores known to carry
+    credentials or PII (``state.vscdb``, ``credentials.toml``, key files).
+    Snapshot dirs are created owner-only (0700) and files 0600 — a
+    snapshot is a copy of every secret the stores hold.
+    """
     data_dir = Path(data_dir).expanduser()
     config_dir = Path(config_dir).expanduser() if config_dir else None
     out_dir = Path(out_dir).expanduser()
@@ -143,10 +176,20 @@ def create_snapshot(
         stores = discover_stores(data_dir, config_dir=config_dir, exclude=[out_dir])
     except DataDirError as exc:
         raise SnapshotError(str(exc)) from exc
+    patterns = tuple(exclude) + (
+        SENSITIVE_PATTERNS if exclude_secrets else ()
+    )
+    skipped = [s for s in stores if _excluded(s, patterns)]
+    stores = [s for s in stores if not _excluded(s, patterns)]
     if not stores:
         raise SnapshotError(f"{data_dir}: no Devin stores found to back up")
 
     snap_dir = _unique_dir(out_dir, snapshot_timestamp(now))
+    snap_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(snap_dir, 0o700)
+    except OSError:
+        pass
     try:
         entries = [_copy_store(store, snap_dir) for store in stores]
         manifest = {
@@ -157,6 +200,9 @@ def create_snapshot(
             "provenance": identity.provenance(),
             "source_data_dir": str(data_dir.resolve()),
             "files": entries,
+            "excluded": [
+                {"path": s.rel_path, "root": s.root} for s in skipped
+            ],
             "schema_versions": {
                 e.get("snapshot_path", e["path"]): e["schema_version"]
                 for e in entries
@@ -165,10 +211,15 @@ def create_snapshot(
         }
         if config_dir is not None:
             manifest["source_config_dir"] = str(config_dir.resolve())
-        (snap_dir / MANIFEST_NAME).write_text(
+        manifest_path = snap_dir / MANIFEST_NAME
+        manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=False) + "\n",
             encoding="utf-8",
         )
+        try:
+            os.chmod(manifest_path, 0o600)
+        except OSError:
+            pass
     except Exception:
         shutil.rmtree(snap_dir, ignore_errors=True)
         raise

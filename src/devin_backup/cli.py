@@ -36,11 +36,17 @@ def _cmd_create(args) -> int:
     config_dir = args.config_dir
     if config_dir is None and args.data_dir is None:
         config_dir = default_config_dir()
-    snap = snapshot.create_snapshot(data_dir, out, config_dir=config_dir)
+    snap = snapshot.create_snapshot(
+        data_dir, out, config_dir=config_dir,
+        exclude=tuple(args.exclude or ()),
+        exclude_secrets=args.exclude_secrets,
+    )
     manifest = snapshot.load_manifest(snap)
     total = sum(f.get("size", 0) for f in manifest["files"])
     print(f"created snapshot: {snap}")
     print(f"  {len(manifest['files'])} file(s), {total} bytes")
+    for entry in manifest.get("excluded", []):
+        print(f"  excluded: {entry['path']}")
     for rel, version in manifest["schema_versions"].items():
         print(f"  {rel}: schema v{version}")
     for entry in manifest["files"]:
@@ -199,6 +205,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_create.add_argument(
         "--config-dir",
         help="separate Devin UI config root (Linux default is detected)",
+    )
+    p_create.add_argument(
+        "--exclude", action="append", metavar="PATTERN",
+        help="skip stores whose relative path matches PATTERN "
+        "(substring or glob; repeatable)",
+    )
+    p_create.add_argument(
+        "--exclude-secrets", action="store_true",
+        help="skip stores known to carry credentials/PII "
+        "(state.vscdb, credentials.toml, *.pem, *.key)",
     )
     p_create.set_defaults(func=_cmd_create)
 
