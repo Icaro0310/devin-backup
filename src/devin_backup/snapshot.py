@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from devin_backup import identity
 from devin_internals.schema import SchemaError, detect_schema_version
 
 from devin_backup import __version__
@@ -153,6 +154,7 @@ def create_snapshot(
             "tool": "devin-backup",
             "tool_version": __version__,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "provenance": identity.provenance(),
             "source_data_dir": str(data_dir.resolve()),
             "files": entries,
             "schema_versions": {
