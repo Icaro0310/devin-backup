@@ -2,6 +2,9 @@
 
 <img src="assets/banner.svg" alt="devin-backup" width="100%"/>
 
+<a href="https://github.com/Icaro0310/devin-backup/actions/workflows/ci.yml"><img src="https://github.com/Icaro0310/devin-backup/actions/workflows/ci.yml/badge.svg" alt="ci"/></a>
+
+
 </div>
 
 # devin-backup
