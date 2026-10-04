@@ -10,7 +10,9 @@ def data_dir(tmp_path):
     fixtures.create_devin_data_dir(root, n_acp_dbs=2)
     cfg = root / ".devin" / "config.json"
     cfg.parent.mkdir(parents=True, exist_ok=True)
-    cfg.write_text('{"synthetic": true}\n', encoding="utf-8")
+    # write_bytes keeps LF line endings on Windows too, so manifest sizes
+    # and hashes are platform-independent
+    cfg.write_bytes(b'{"synthetic": true}\n')
     return root
 
 

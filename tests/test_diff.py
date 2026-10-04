@@ -36,7 +36,9 @@ def test_diff_identical_snapshot_and_live(data_dir, backups_dir):
 def test_diff_changed_plain_file(data_dir, backups_dir):
     snap = _snap(data_dir, backups_dir)
     cfg = data_dir / ".devin" / "config.json"
-    cfg.write_text('{"synthetic": false, "extra": 1}\n', encoding="utf-8")
+    # write_bytes: LF on every platform so size assertions don't depend on
+    # Windows newline translation (\n -> \r\n)
+    cfg.write_bytes(b'{"synthetic": false, "extra": 1}\n')
 
     report = diff.diff_snapshot(snap, data_dir)
     entry = _by_path(report)[".devin/config.json"]
