@@ -14,6 +14,8 @@
 
 **[Linux](README.linux.md)** · **[Personal Windows](README.windows.md)** · **[Corporate Windows](README.corporate-windows.md)**
 
+Part of the [awesome-devin](https://github.com/Icaro0310/awesome-devin) ecosystem: the curated hub for the devin-* tools.
+
 Safe backup & restore for Devin Desktop stores: timestamped snapshots of
 `sessions.db`, `acp-messages/`, `state.vscdb` and `.devin/` config — with
 SQLite-consistent copies, integrity verification and rotation.
