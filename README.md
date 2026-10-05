@@ -12,7 +12,7 @@
 > **Unofficial community project.** Not affiliated with, endorsed by, or
 > sponsored by Cognition AI. "Devin" is a trademark of Cognition AI.
 
-**[Português (BR)](README.pt-BR.md)** · English
+**[Windows](README.windows.md)** · **[Linux](README.linux.md)** · English
 
 Safe backup & restore for Devin Desktop stores: timestamped snapshots of
 `sessions.db`, `acp-messages/`, `state.vscdb` and `.devin/` config — with
@@ -174,7 +174,8 @@ python -m pytest
 ```
 
 Ground rules in [CONTRIBUTING.md](CONTRIBUTING.md): fixtures before code,
-small commits, bilingual docs. Canonical spec: [docs/SPEC.md](docs/SPEC.md).
+small commits, a shared README and Windows/Linux platform guides. Canonical
+spec: [docs/SPEC.md](docs/SPEC.md).
 
 ## When to use this
 

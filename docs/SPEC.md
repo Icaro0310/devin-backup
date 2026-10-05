@@ -116,7 +116,7 @@ warning, CLI exit codes. 48 tests, Windows + Linux (CI matrix).
 
 - [x] `pytest` green (48 tests)
 - [x] `devin-backup create/verify/list/restore/rotate` runs on a fixture dir
-- [x] `docs/SPEC.md` + bilingual READMEs with Prior art / Limitations
+- [x] `docs/SPEC.md` + shared README and Windows/Linux guides with Prior art / Limitations
 - [x] CHANGELOG + STATUS updated, pushed
 
 ## 10. M2 queue

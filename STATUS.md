@@ -30,8 +30,8 @@ Updated: 2026-09-29 · Milestone: **M1 (done)** · Version: 0.1.0
 - **48 tests, all green** (Windows, Python 3.11.9, pytest 9.1.1). Fixtures
   via `devin_internals.fixtures.create_devin_data_dir()` + synthetic
   `.devin/config.json`.
-- `docs/SPEC.md` (EN canonical), real bilingual READMEs, smoke-tested CLI
-  end-to-end on a fixture dir (create → verify → dry-run/apply restore →
+- `docs/SPEC.md` (EN canonical), shared README plus Windows/Linux platform
+  guides, smoke-tested CLI end-to-end on a fixture dir (create → verify → dry-run/apply restore →
   pre-restore backup → rotate).
 
 ## Environment notes
