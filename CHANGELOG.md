@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   byte-identical), size deltas, per-table row counts on drift, and
   snapshot-only/live-only files. Always exits 0; `--json` supported.
 
+### Changed
+
+- `llms.txt` no longer states a hard-coded ecosystem size; the registry owns the count.
+
 ## [0.1.0] - 2026-09-29
 
 ### Added
