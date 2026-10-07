@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- README install section replaced by a generated `DIST-STATUS` banner stating the tool is source-only (no PyPI release yet) and offering both `pipx` and `uv` source installs.
+
 - `llms.txt` no longer states a hard-coded ecosystem size; the registry owns the count.
 
 ## [0.1.0] - 2026-09-29
