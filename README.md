@@ -15,9 +15,9 @@
 </div>
 
 <!-- DEVIN-ECO:BEGIN -->
-> **Part of the [DEVIN ecosystem](https://github.com/Icaro0310/awesome-devin)**
-> Track: Control · Nature: product
-> For: operations, security engineers
+> **Part of the [DEVIN ecosystem](https://github.com/Icaro0310/awesome-devin)**  
+> Track: Control · Nature: product  
+> For: operations, security engineers  
 > Interface: CLI
 <!-- DEVIN-ECO:END -->
 

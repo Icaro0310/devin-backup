@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- README gains the generated `Part of the DEVIN ecosystem` block
+  (track/nature/audience/interface rendered from the registry).
+
 - `diff <snapshot>` subcommand + `diff_snapshot()`: read-only comparison of
   a snapshot against the live stores — per-file same/different via sha256
   plus a logical SQLite content digest (backup copies are not
