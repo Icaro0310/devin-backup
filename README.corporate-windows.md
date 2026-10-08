@@ -39,6 +39,17 @@ Use the tool's documented `--data-dir` or `--config-dir` flags for non-default l
 - **Offline/air-gapped:** `pip download <package> -d wheels\` on a connected machine, copy the folder, then `pip install --no-index --find-links wheels\` on the target (pure-Python tools; native deps need a matching platform wheel). For `source_only` tools installed from a copied checkout, stage the build backend too (`pip download setuptools wheel`), then install with `pip install --no-index --find-links wheels\ --no-build-isolation .` inside the checkout.
 - **Fully local runtime:** installed tools make no required network calls — they read `sessions.db` and local stores only. The single exception is devin-doctor's optional update check (fetches the DevKit manifest); it self-skips when the registry is unreachable, or force it off with `DEVIN_DOCTOR_OFFLINE=1`.
 
+## Recurring runs (optional)
+
+_Nightly snapshot; pair with a weekly `devin-backup rotate --keep 10 --yes`. Or let the tool self-schedule with `devin-backup install` (cron / Task Scheduler / elapsed backends)._
+
+```powershell
+schtasks /create /tn "devin-backup" /tr "devin-backup create --out %USERPROFILE%\backups" /sc daily /st 04:00 /f
+```
+
+User-scope `schtasks` needs no admin. If Group Policy disables Task Scheduler, run the command manually or use the tool's own `install` subcommand where available.
+
+
 ## Troubleshooting
 
 - If a command is not found, reopen PowerShell and run `uv tool update-shell`.
