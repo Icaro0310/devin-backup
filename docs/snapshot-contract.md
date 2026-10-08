@@ -12,7 +12,7 @@ cross-repo API break — janitor re-implements verification on its side.
 | `manifest_version` | integer; janitor accepts `{1, 2}` — bump requires a janitor-side update |
 | `created_at` | ISO-8601 timestamp, parseable, < 24h old at cleanup time |
 | `files` | list of entries |
-| `files[].path` | store path; must include `state.vscdb` for tier-3 coverage |
+| `files[].path` | store path; a file whose basename is `state.vscdb` must be listed for tier-3 coverage (exact name match — `state.vscdb.old` does not count) |
 | `files[].snapshot_path` | optional; when present, the file lives at `snapshot/<snapshot_path>` instead of `snapshot/<path>` |
 | `files[].size` | when present, must equal the file's byte size |
 | `files[].sha256` | when present, must equal the file's SHA-256 |
