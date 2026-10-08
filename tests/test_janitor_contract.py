@@ -12,6 +12,8 @@ documented in `docs/snapshot-contract.md`.
 """
 
 import json
+import sqlite3
+import time
 from datetime import datetime
 
 from devin_backup import snapshot
@@ -20,7 +22,8 @@ from devin_backup import snapshot
 REQUIRED_MANIFEST_FIELDS = {"manifest_version", "created_at", "files"}
 REQUIRED_FILE_FIELDS = {"path"}  # size/sha256 enforced when present
 SUPPORTED_MANIFEST_VERSIONS = {1, 2}
-TIER3_REQUIRED_FRAGMENT = "state.vscdb"
+TIER3_REQUIRED_FILENAME = "state.vscdb"
+TIER3_MAX_AGE_S = 24 * 3600
 
 
 def test_manifest_shape_satisfies_janitor(data_dir, backups_dir):
@@ -29,8 +32,6 @@ def test_manifest_shape_satisfies_janitor(data_dir, backups_dir):
 
     assert REQUIRED_MANIFEST_FIELDS <= set(manifest)
     assert manifest["manifest_version"] in SUPPORTED_MANIFEST_VERSIONS
-    # janitor rejects manifests whose created_at it cannot parse
-    datetime.fromisoformat(manifest["created_at"])
     assert isinstance(manifest["files"], list)
 
     for entry in manifest["files"]:
@@ -45,11 +46,50 @@ def test_manifest_shape_satisfies_janitor(data_dir, backups_dir):
             assert hashlib.sha256(f.read_bytes()).hexdigest() == entry["sha256"]
 
 
+def test_created_at_is_fresh_and_timezone_aware(data_dir, backups_dir):
+    """Janitor rejects manifests it cannot parse or older than 24h."""
+    snap = snapshot.create_snapshot(data_dir, backups_dir)
+    manifest = json.loads((snap / "manifest.json").read_text())
+    created = datetime.fromisoformat(manifest["created_at"])
+    assert created.tzinfo is not None, "created_at must carry a timezone"
+    age = time.time() - created.timestamp()
+    assert 0 <= age < TIER3_MAX_AGE_S
+
+
 def test_manifest_covers_state_vscdb(data_dir, backups_dir):
-    """Tier-3 needs a manifest whose files cover `state.vscdb`."""
+    """Tier-3 needs a manifest whose files cover `state.vscdb` exactly —
+    a `state.vscdb.old` entry must not satisfy coverage."""
     snap = snapshot.create_snapshot(data_dir, backups_dir)
     manifest = json.loads((snap / "manifest.json").read_text())
     assert any(
-        TIER3_REQUIRED_FRAGMENT in str(e.get("path", ""))
+        str(e.get("path", "")).endswith("/" + TIER3_REQUIRED_FILENAME)
+        or e.get("path") == TIER3_REQUIRED_FILENAME
         for e in manifest["files"]
     ), "manifest lost state.vscdb coverage — janitor tier-3 would refuse"
+
+
+def test_config_root_state_vscdb_reachable_via_snapshot_path(
+    data_dir, backups_dir, tmp_path
+):
+    """On Linux the UI store lives in a separate config root; janitor
+    resolves files via `snapshot_path`, so the entry must point at the
+    copied file inside the snapshot."""
+    config_root = tmp_path / "config" / "Devin"
+    state_db = config_root / "User" / "globalStorage" / "state.vscdb"
+    state_db.parent.mkdir(parents=True)
+    with sqlite3.connect(state_db) as conn:
+        conn.execute("CREATE TABLE sample (value TEXT)")
+
+    snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_root)
+    manifest = json.loads((snap / "manifest.json").read_text())
+
+    entry = next(
+        e
+        for e in manifest["files"]
+        if str(e.get("path", "")).endswith("/" + TIER3_REQUIRED_FILENAME)
+    )
+    target = snap / (entry.get("snapshot_path") or entry["path"])
+    assert target.is_file(), (
+        f"janitor resolves {entry.get('snapshot_path') or entry['path']!r} "
+        "relative to the snapshot dir"
+    )
