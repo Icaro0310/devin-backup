@@ -72,7 +72,7 @@ format changed underneath a backup.*
 
 ## Install
 
-Requires Python ≥ 3.10 and `pipx` or `uv`: `uv tool install devin-backup` or `pip install devin-backup`. Per-OS setup lives in the platform guides: [Linux](README.linux.md) · [Personal Windows](README.windows.md) · [Corporate Windows](README.corporate-windows.md).
+Requires Python ≥ 3.10. Install with `pipx install devin-backup`, `uv tool install devin-backup` or `pip install devin-backup`. Per-OS setup lives in the platform guides: [Linux](README.linux.md) · [Personal Windows](README.windows.md) · [Corporate Windows](README.corporate-windows.md).
 
 
 ## Usage
