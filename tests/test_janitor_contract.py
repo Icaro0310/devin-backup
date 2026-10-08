@@ -52,6 +52,7 @@ def test_created_at_is_fresh_and_timezone_aware(data_dir, backups_dir):
     manifest = json.loads((snap / "manifest.json").read_text())
     created = datetime.fromisoformat(manifest["created_at"])
     assert created.tzinfo is not None, "created_at must carry a timezone"
+    assert created.utcoffset().total_seconds() == 0, "created_at must be UTC"
     age = time.time() - created.timestamp()
     assert 0 <= age < TIER3_MAX_AGE_S
 
@@ -61,11 +62,23 @@ def test_manifest_covers_state_vscdb(data_dir, backups_dir):
     a `state.vscdb.old` entry must not satisfy coverage."""
     snap = snapshot.create_snapshot(data_dir, backups_dir)
     manifest = json.loads((snap / "manifest.json").read_text())
-    assert any(
-        str(e.get("path", "")).endswith("/" + TIER3_REQUIRED_FILENAME)
-        or e.get("path") == TIER3_REQUIRED_FILENAME
+    covering = [
+        e
         for e in manifest["files"]
-    ), "manifest lost state.vscdb coverage — janitor tier-3 would refuse"
+        if str(e.get("path", "")).replace("\\", "/").endswith(
+            "/" + TIER3_REQUIRED_FILENAME
+        )
+        or e.get("path") == TIER3_REQUIRED_FILENAME
+    ]
+    assert covering, (
+        "manifest lost state.vscdb coverage — janitor tier-3 would refuse"
+    )
+    # the covering entry is the real file, not a lookalike name
+    assert all(
+        str(e["path"]).replace("\\", "/").rsplit("/", 1)[-1]
+        == TIER3_REQUIRED_FILENAME
+        for e in covering
+    )
 
 
 def test_config_root_state_vscdb_reachable_via_snapshot_path(
@@ -83,13 +96,32 @@ def test_config_root_state_vscdb_reachable_via_snapshot_path(
     snap = snapshot.create_snapshot(data_dir, backups_dir, config_dir=config_root)
     manifest = json.loads((snap / "manifest.json").read_text())
 
+    # The data fixture ships its own state.vscdb (root="data"), so match
+    # the config-root entry explicitly — picking the first endswith match
+    # would pass even if config copying regressed.
     entry = next(
-        e
-        for e in manifest["files"]
-        if str(e.get("path", "")).endswith("/" + TIER3_REQUIRED_FILENAME)
+        (
+            e
+            for e in manifest["files"]
+            if e.get("root") == "config"
+            and str(e.get("path", "")).replace("\\", "/").endswith(
+                "/" + TIER3_REQUIRED_FILENAME
+            )
+        ),
+        None,
     )
+    assert entry is not None, "config-root state.vscdb missing from manifest"
     target = snap / (entry.get("snapshot_path") or entry["path"])
     assert target.is_file(), (
         f"janitor resolves {entry.get('snapshot_path') or entry['path']!r} "
         "relative to the snapshot dir"
     )
+    # Content proves the *config* file was copied, not the data-root one.
+    with sqlite3.connect(target) as conn:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    assert "sample" in tables
