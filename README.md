@@ -74,16 +74,6 @@ format changed underneath a backup.*
 
 Requires Python ≥ 3.10 and `pipx` or `uv`. Per-OS setup lives in the platform guides: [Linux](README.linux.md) · [Personal Windows](README.windows.md) · [Corporate Windows](README.corporate-windows.md).
 
-<!-- DIST-STATUS:BEGIN — generated from devin-powerups/registry.json -->
-> **Source-only distribution.** This tool is not yet published to PyPI.
-> Install from source:
->
-> ```bash
-> pipx install git+https://github.com/Icaro0310/devin-backup.git
-> # or
-> uv tool install git+https://github.com/Icaro0310/devin-backup.git
-> ```
-<!-- DIST-STATUS:END -->
 
 ## Usage
 
