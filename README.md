@@ -1,5 +1,32 @@
 <div align="center">
 
+# devin-backup — MOVED
+
+**This repository was absorbed into the
+[`devin-state`](https://github.com/Icaro0310/devin-state) monorepo.**
+
+The code now lives at `packages/backup/` and the CLI is unchanged:
+`pip install devin-backup` / `uv tool install devin-backup` still
+installs the same package, now released from devin-state.
+
+```bash
+# development moved
+git clone https://github.com/Icaro0310/devin-state
+cd devin-state/packages/backup
+```
+
+The repository is archived; open issues and PRs belong to devin-state.
+History remains readable here for reference.
+
+</div>
+
+---
+
+<details>
+<summary>Original README (pre-archive)</summary>
+
+<div align="center">
+
 <img src="assets/banner.svg" alt="devin-backup" width="100%"/>
 
 <a href="https://github.com/Icaro0310/devin-backup/actions/workflows/ci.yml"><img src="https://github.com/Icaro0310/devin-backup/actions/workflows/ci.yml/badge.svg" alt="ci"/></a>
@@ -239,3 +266,5 @@ care you give the original stores.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+</details>
