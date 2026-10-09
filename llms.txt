@@ -27,5 +27,5 @@ devin-backup solves two failure modes of naive file-copy backups of Devin's loca
 
 - [devin-ecosystem](https://icaro0310.github.io/): the tool ecosystem this belongs to
 - [devin-internals-spec](https://github.com/Icaro0310/devin-internals-spec): documents the stores this snapshots and provides schema detection
-- [devin-redact](https://github.com/Icaro0310/devin-redact): recommended before running its `--apply` in-place redaction
+- [devin-redact](https://github.com/Icaro0310/devin-state): recommended before running its `--apply` in-place redaction
 - [devin-janitor](https://github.com/Icaro0310/devin-janitor): lifecycle cleanup; a backup first is the sane recipe
